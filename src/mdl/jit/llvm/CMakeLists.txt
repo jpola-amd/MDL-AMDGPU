@@ -90,9 +90,14 @@ set(_LLVM_LIB_NAMES
     LLVMMCDisassembler
     LLVMMCJIT
     LLVMMCParser
+    LLVMMIRParser
     LLVMNVPTXCodeGen
     LLVMNVPTXDesc
     LLVMNVPTXInfo
+    LLVMAMDGPUCodeGen
+    LLVMAMDGPUDesc
+    LLVMAMDGPUInfo
+    LLVMAMDGPUUtils
     LLVMObject
     LLVMOption
     LLVMOrcJIT
@@ -125,7 +130,7 @@ set(_LLVM_LIB_NAMES
 # disable unneeded stuff
 # Here, we define the options before they are created within the dist/CMakeLists.txt.
 # This allows to change the default values without altering the code inside the dist folder.
-set(LLVM_TARGETS_TO_BUILD "${_LLVM_PLATFORM_NAME_MIXED_CASE};NVPTX" CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
+set(LLVM_TARGETS_TO_BUILD "${_LLVM_PLATFORM_NAME_MIXED_CASE};NVPTX;AMDGPU" CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
 option(LLVM_INCLUDE_BENCHMARKS "Generate benchmark targets. If OFF, benchmarks can't be built." OFF)
 option(LLVM_INCLUDE_TESTS "Generate build targets for the LLVM unit tests." OFF)
 option(LLVM_INCLUDE_GO_TESTS "Include the Go bindings tests in test build targets." OFF)
@@ -333,6 +338,7 @@ set(_LLVM_ADDITIONAL_TARGETS
     intrinsics_gen
     LibOptionsTableGen
     NVPTXCommonTableGen
+    AMDGPUCommonTableGen
     ${_LLVM_PLATFORM_NAME_MIXED_CASE}CommonTableGen
     omp_cpp
     omp_gen
@@ -343,7 +349,7 @@ set(_LLVM_ADDITIONAL_TARGETS
 # exclude targets that are not required
 set(_LLVM_EXCLUDE 
     # libs
-    LLVMCoroutines
+    #LLVMCoroutines
     LLVMCoverage
     # LLVMDebugInfoMSF (commented out in the creating cmake file)
     LLVMDlltoolDriver
@@ -358,16 +364,16 @@ set(_LLVM_EXCLUDE
     LLVMLineEditor
     LLVMLTO
     LLVMMCA
-    LLVMMIRParser
+    #LLVMMIRParser
     LLVMObjCARCOpts
     LLVMObjectYAML
-    LLVMPasses
+    #LLVMPasses
     LLVMSymbolize
     LLVMWindowsManifest
     LLVMXRay
     # loadable modules
-    LLVMHello
-    LLVMHelloNew
+    # LLVMHello
+    # LLVMHelloNew
     # misc
     llvm-headers
     ocaml_all

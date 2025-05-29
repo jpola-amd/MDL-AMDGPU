@@ -213,7 +213,9 @@ add_llvm_component_library(LLVMCodeGen
   TransformUtils
   )
 
+ message(STATUS "** Adding LLVM CodeGen subdirectories")
 add_subdirectory(SelectionDAG)
 add_subdirectory(AsmPrinter)
+message(STATUS "** Adding LLVM MIRParser subdirectories")
 add_subdirectory(MIRParser)
 add_subdirectory(GlobalISel)

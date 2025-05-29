@@ -65,3 +65,5 @@ else()
         message(WARNING "Clang version >= 7.0.0 is required but Clang ${_CLANG_VERSION_STRING} was found instead.")
     endif()
 endif()
+
+message(STATUS "JPA: Clang is taken from ${clang_PATH} with version ${_CLANG_VERSION_STRING}")

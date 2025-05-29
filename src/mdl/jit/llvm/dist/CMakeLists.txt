@@ -293,6 +293,7 @@ set(LLVM_ALL_TARGETS
   AArch64
   NVPTX
   X86
+  AMDGPU
   )
 
 # List of targets with JIT support:
@@ -694,16 +695,25 @@ set(LLVM_ENUM_TARGETS "")
 set(LLVM_ENUM_ASM_PRINTERS "")
 set(LLVM_ENUM_ASM_PARSERS "")
 set(LLVM_ENUM_DISASSEMBLERS "")
+message(STATUS "Configuring targets...")
+message(STATUS "ALL LLVM targets: ${LLVM_ALL_TARGETS}")
+message(STATUS "LLVM targets to build: ${LLVM_TARGETS_TO_BUILD}")
 foreach(t ${LLVM_TARGETS_TO_BUILD})
-  set( td ${LLVM_MAIN_SRC_DIR}/lib/Target/${t} )
+  message(STATUS "Configuring target: ${t}")
 
+  set( td ${LLVM_MAIN_SRC_DIR}/lib/Target/${t} )
+  if( NOT EXISTS ${td} )
+    message(FATAL_ERROR "Target directory does not exist: ${td}")
+  endif()
   list(FIND LLVM_ALL_TARGETS ${t} idx)
+
   list(FIND LLVM_EXPERIMENTAL_TARGETS_TO_BUILD ${t} idy)
   # At this point, LLVMBUILDTOOL already checked all the targets passed in
   # LLVM_TARGETS_TO_BUILD and LLVM_EXPERIMENTAL_TARGETS_TO_BUILD, so
   # this test just makes sure that any experimental targets were passed via
   # LLVM_EXPERIMENTAL_TARGETS_TO_BUILD, not LLVM_TARGETS_TO_BUILD.
   if( idx LESS 0 AND idy LESS 0 )
+    message(STATUS "IDX: ${idx}, IDY: ${idy}")
     message(FATAL_ERROR "The target `${t}' is experimental and must be passed "
       "via LLVM_EXPERIMENTAL_TARGETS_TO_BUILD.")
   else()

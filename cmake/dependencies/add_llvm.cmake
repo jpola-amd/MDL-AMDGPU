@@ -64,6 +64,7 @@ set(_LLVM_LIB_NAMES
     LLVMCFGuard
     LLVMCodeGen
     LLVMCore
+    LLVMCoroutines
     LLVMDebugInfoCodeView
     LLVMDebugInfoDWARF
     LLVMDebugInfoPDB
@@ -72,9 +73,13 @@ set(_LLVM_LIB_NAMES
     LLVMExecutionEngine
     LLVMFrontendOpenMP
     LLVMGlobalISel
+    #LLVMHello
+    LLVMHelloNew
     LLVMInstCombine
     LLVMInstrumentation
     LLVMipo
+    # required by amdgpu
+    LLVMMIRParser
     LLVMIRReader
     LLVMJITLink
     LLVMLinker
@@ -85,11 +90,16 @@ set(_LLVM_LIB_NAMES
     LLVMNVPTXCodeGen
     LLVMNVPTXDesc
     LLVMNVPTXInfo
+    LLVMAMDGPUCodeGen
+    LLVMAMDGPUDesc
+    LLVMAMDGPUInfo
+    LLVMAMDGPUUtils
     LLVMObject
     LLVMOption
     LLVMOrcJIT
     LLVMOrcShared
     LLVMOrcTargetProcess
+    LLVMPasses
     LLVMProfileData
     LLVMRemarks
     LLVMRuntimeDyld
