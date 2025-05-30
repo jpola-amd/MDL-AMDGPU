@@ -89,7 +89,11 @@ public:
         MB_GLSL,              ///< Generate GLSL code.
         MB_NATIVE,            ///< Generate native code.
         MB_HLSL,              ///< Generate HLSL code.
-        MB_LLVM_AMDGCN_IR,     ///< Generate AMDGCN IR
+        MB_LLVM_AMDGCN_IR,     ///< Generate AMDGCN IR for AMD GPUs.
+                               ///< This backend generates LLVM IR compatible with AMD's GCN architecture.
+                               ///< It is intended for use in scenarios where AMD GPU-specific optimizations
+                               ///< are required. Ensure that the target environment supports AMDGCN IR
+                               ///< before using this backend.
         MB_FORCE_32_BIT = 0xffffffffU //   Undocumented, for alignment only
     };
 
