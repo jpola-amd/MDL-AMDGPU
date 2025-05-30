@@ -61,7 +61,8 @@ public:
         TL_PTX     = 1,   ///< Compile into PTX assembler.
         TL_HLSL    = 2,   ///< Compile into HLSL code.
         TL_GLSL    = 3,   ///< Compile into GLSL code.
-        TL_LLVM_IR = 4    ///< Compile into LLVM IR (LLVM 12.0 compatible).
+        TL_LLVM_IR = 4,    ///< Compile into LLVM IR (LLVM 12.0 compatible).
+        TL_LLVM_AMDGPU_IR = 5 ///< Compile into AMDGCN IR
     };
 
     /// The name of the code generator option to set the internal space.
@@ -1319,6 +1320,8 @@ class ICode_generator_jit : public
     /// The name of the option to enable a warning if a spectrum color is converted into an RGB.
     #define MDL_JIT_WARN_SPECTRUM_CONVERSION "jit_warn_spectrum_conversion"
 
+    #define MDL_JIT_OPTION_AMDGCN_GFX_ARCH "jit_amdgcn_gfx_arch"
+
 public:
     /// Creates a new thread context.
     virtual ICode_generator_thread_context *create_thread_context() = 0;
@@ -1471,7 +1474,8 @@ public:
         ICode_generator_thread_context *ctx,
         unsigned                       num_texture_spaces,
         unsigned                       num_texture_results,
-        bool                           enable_simd) = 0;
+        bool                           enable_simd,
+        unsigned                       gfx_arch = 0) = 0;
 
     /// Compile a lambda function into PTX or HLSL using the JIT.
     ///
@@ -1499,6 +1503,7 @@ public:
         unsigned                       num_texture_spaces,
         unsigned                       num_texture_results,
         unsigned                       sm_version,
+        unsigned                       gfx_arch,
         Target_language                target,
         bool                           llvm_ir_output) = 0;
 

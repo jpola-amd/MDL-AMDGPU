@@ -357,6 +357,11 @@ static void fill_default_cg_options(
         MDL_JIT_WARN_SPECTRUM_CONVERSION,
         "false",
         "Warn if a spectrum color is converted into an RGB value");
+
+    options.add_option(
+        MDL_JIT_OPTION_AMDGCN_GFX_ARCH,
+        "",
+        "AMDGCN target architecture");
 }
 
 // Constructor.
@@ -1298,7 +1303,8 @@ IGenerated_code_executable *Code_generator_jit::compile_into_llvm_ir(
     ICode_generator_thread_context *ctx,
     unsigned                       num_texture_spaces,
     unsigned                       num_texture_results,
-    bool                           enable_simd)
+    bool                           enable_simd,
+    unsigned                       gfx_arch)
 {
     Lambda_function const *lambda = impl_cast<Lambda_function>(ilambda);
     if (lambda == NULL) {
@@ -1327,12 +1333,16 @@ IGenerated_code_executable *Code_generator_jit::compile_into_llvm_ir(
     Allocator_builder builder(alloc);
 
     Generated_code_source *code = builder.create<Generated_code_source>(
-        alloc, IGenerated_code_executable::CK_LLVM_IR);
+        alloc, gfx_arch == 0 ?  IGenerated_code_executable::CK_LLVM_IR : IGenerated_code_executable::CK_AMDGCN_IR);
 
     Generated_code_source::Source_res_manag res_manag(alloc, &lambda->get_resource_attribute_map());
 
     llvm::LLVMContext llvm_context;
     mi::base::Handle<MDL> compiler(lambda->get_compiler());
+
+    Target_language TL = gfx_arch == 0 ? ICode_generator::TL_NATIVE : ICode_generator::TL_LLVM_AMDGPU_IR;
+    Type_mapper::Type_mapping_mode TM = gfx_arch == 0 ? (enable_simd ? Type_mapper::TM_SMALL_VECTORS : Type_mapper::TM_ALL_SCALAR) : Type_mapper::TM_SMALL_VECTORS;
+    bool has_tex_handler = gfx_arch == 0 ? options.get_bool_option(MDL_JIT_USE_BUILTIN_RESOURCE_HANDLER_CPU) : false;
 
     LLVM_code_generator code_gen(
         m_jitted_code.get(),
@@ -1340,10 +1350,10 @@ IGenerated_code_executable *Code_generator_jit::compile_into_llvm_ir(
         cache,
         code->access_messages(),
         llvm_context,
-        ICode_generator::TL_NATIVE,
-        enable_simd ? Type_mapper::TM_SMALL_VECTORS : Type_mapper::TM_ALL_SCALAR,
+        TL,
+        TM,
         /*sm_version=*/0,
-        /*has_tex_handler=*/options.get_bool_option(MDL_JIT_USE_BUILTIN_RESOURCE_HANDLER_CPU),
+        /*has_tex_handler=*/ has_tex_handler,
         Type_mapper::SSM_CORE,
         num_texture_spaces,
         num_texture_results,
@@ -1830,6 +1840,7 @@ IGenerated_code_executable *Code_generator_jit::compile_into_source(
     unsigned                       num_texture_spaces,
     unsigned                       num_texture_results,
     unsigned                       sm_version,
+    unsigned                       gfx_arch,
     Target_language                target,
     bool                           llvm_ir_output)
 {
@@ -1875,6 +1886,10 @@ IGenerated_code_executable *Code_generator_jit::compile_into_source(
         code_kind = IGenerated_code_executable::CK_GLSL;
         tm_mode = Type_mapper::TM_GLSL;
         break;
+    case TL_LLVM_AMDGPU_IR:
+        code_kind = IGenerated_code_executable::CK_AMDGCN_IR;
+        tm_mode = Type_mapper::TM_AMDGCN_IR;
+        break; 
     case TL_NATIVE:
     case TL_LLVM_IR:
         MDL_ASSERT(!"Invalid compilation_mode for compile_distribution_function_gpu");
@@ -1903,6 +1918,9 @@ IGenerated_code_executable *Code_generator_jit::compile_into_source(
         hasher.update(hash->data(), hash->size());
         if (target == TL_PTX) {
             hasher.update(sm_version);
+        }
+        if (target == TL_LLVM_AMDGPU_IR) {
+            hasher.update(gfx_arch);
         }
         hasher.update(llvm_ir_output);
 
@@ -1935,6 +1953,11 @@ IGenerated_code_executable *Code_generator_jit::compile_into_source(
     }
 
     mi::base::Handle<MDL> compiler(lambda->get_compiler());
+
+  /*  Target_language TL = gfx_arch == 0 ? ICode_generator::TL_NATIVE : ICode_generator::TL_LLVM_AMDGPU_IR;
+    Type_mapper::Type_mapping_mode TM = gfx_arch == 0 ? (enable_simd ? Type_mapper::TM_SMALL_VECTORS : Type_mapper::TM_ALL_SCALAR) : Type_mapper::TM_SMALL_VECTORS;
+    bool has_tex_handler = gfx_arch == 0 ? options.get_bool_option(MDL_JIT_USE_BUILTIN_RESOURCE_HANDLER_CPU) : false;*/
+
 
     LLVM_code_generator code_gen(
         m_jitted_code.get(),
@@ -1993,6 +2016,9 @@ IGenerated_code_executable *Code_generator_jit::compile_into_source(
             case TL_HLSL:
             case TL_GLSL:
                 code_gen.sl_compile(mod, target, options, *code);
+                break;
+            case TL_LLVM_AMDGPU_IR:
+                code_gen.llvm_bc_compile(mod, code->access_src_code());
                 break;
             default:
                 MDL_ASSERT(!"unexpected target language");

@@ -71,6 +71,7 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/CommandLine.h>
+#include <llvm/Support/raw_ostream.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/IPO/AlwaysInliner.h>
 #include <llvm/Transforms/IPO/PassManagerBuilder.h>
@@ -1267,6 +1268,39 @@ void State_usage_analysis::update_exported_functions_state_usage()
 
 // ------------------------------- LLVM code generator -------------------------------
 
+static const char* PrintTargetLanguage(ICode_generator::Target_language tl)
+{
+    switch (tl) {
+    case ICode_generator::Target_language::TL_LLVM_AMDGPU_IR:
+        return "TL_LLVM_AMDGPU_IR";
+    case ICode_generator::Target_language::TL_NATIVE:
+        return "TL_NATIVE";
+    case ICode_generator::Target_language::TL_LLVM_IR:
+        return "TL_LLVM_IR";
+    case ICode_generator::Target_language::TL_PTX:
+        return "TL_PTX";
+    default:
+        return "Unknown";
+    }
+}
+
+static void PrintLLVMModule(llvm::Module* module, ICode_generator::Target_language target_language, const  char* extra_msg = nullptr)
+{
+    if (target_language == ICode_generator::Target_language::TL_LLVM_AMDGPU_IR
+        || target_language == ICode_generator::Target_language::TL_LLVM_IR
+        || target_language == ICode_generator::Target_language::TL_NATIVE)
+    {
+        // print the module to error output if requested
+        if (module) {
+            if (extra_msg)
+                llvm::errs() << extra_msg << "\n";
+            llvm::errs() << "----- LLVM module: (" << PrintTargetLanguage(target_language) << ")\n";
+            module->print(llvm::errs(), nullptr);
+            llvm::errs() << "---- end \n";
+        }
+    }
+}
+
 static unsigned map_target_lang(
     ICode_generator::Target_language lang,
     Type_mapper::Type_mapping_mode   def_mode)
@@ -1275,6 +1309,8 @@ static unsigned map_target_lang(
     case ICode_generator::TL_NATIVE:
     case ICode_generator::TL_LLVM_IR:
         return def_mode;
+    case ICode_generator::TL_LLVM_AMDGPU_IR:
+        return Type_mapper::TM_AMDGCN_IR;
     case ICode_generator::TL_PTX:
         return Type_mapper::TM_PTX;
     case ICode_generator::TL_HLSL:
@@ -1302,6 +1338,29 @@ static string to_string(char const *option, IAllocator *alloc)
     }
     return string(option, alloc);
 }
+
+inline llvm::DataLayout SelectLayout(
+    ICode_generator::Target_language target_lang,
+    llvm::TargetMachine *ptx_target_machine,
+    llvm::TargetMachine* amdgcn_target_machine,
+    Jitted_code *jitted_code)
+{
+    switch(target_lang) {
+        case ICode_generator::TL_PTX:
+            MDL_ASSERT(ptx_target_machine != nullptr);
+            return ptx_target_machine->createDataLayout();
+        case ICode_generator::TL_LLVM_AMDGPU_IR:
+            MDL_ASSERT(amdgcn_target_machine != nullptr);
+            return amdgcn_target_machine->createDataLayout();
+        default:
+            MDL_ASSERT(jitted_code != nullptr);
+            // For all other languages, we use the data layout of the jitted code.
+            // This is important for PTX, where we need to copy the data layout without the struct
+            // cache.
+            return jitted_code->get_layout_data();
+    }
+}
+
 
 // Constructor.
 LLVM_code_generator::LLVM_code_generator(
@@ -1400,14 +1459,24 @@ LLVM_code_generator::LLVM_code_generator(
     // LLVM uses "labels1 - labels2 expression in .section" which requires PTX ISA 7.5 or higher.
     // We use 7.8 because it already is supported in LLVM
     m_enable_full_debug ? 78 : 40)
+    
 , m_ptx_target_machine(
     target_lang == ICode_generator::TL_PTX
-        ? create_ptx_target_machine()
+    ? create_ptx_target_machine()
+    : nullptr)
+///JPA: Ugly as fuck, we just need that to create a target machine. change it to int!
+, m_gfx_architecture(
+            target_lang == ICode_generator::TL_LLVM_AMDGPU_IR
+                ? to_string(options.get_string_option(MDL_JIT_OPTION_AMDGCN_GFX_ARCH), jitted_code->get_allocator())
+                : string("", jitted_code->get_allocator()))
+, m_amdgcn_target_machine(
+    target_lang == ICode_generator::TL_LLVM_AMDGPU_IR
+        ? create_amdgcn_target_machine(m_gfx_architecture)
         : nullptr)
-, m_data_layout(
-    target_lang == ICode_generator::TL_PTX
-        ? m_ptx_target_machine->createDataLayout()
-        : jitted_code->get_layout_data())  // copy the data layout without the struct cache
+, m_data_layout(SelectLayout(target_lang, m_ptx_target_machine.get(), m_amdgcn_target_machine.get(), jitted_code))
+    // target_lang == ICode_generator::TL_PTX
+    //     ? m_ptx_target_machine->createDataLayout()
+    //     : jitted_code->get_layout_data())  // copy the data layout without the struct cache
 , m_type_mapper(
     jitted_code->get_allocator(),
     m_llvm_context,
@@ -1473,7 +1542,7 @@ LLVM_code_generator::LLVM_code_generator(
 , m_lambda_force_no_lambda_results(false)
 , m_use_ro_data_segment(false)
 , m_link_libdevice(
-    target_lang == ICode_generator::TL_PTX &&
+    (target_lang == ICode_generator::TL_PTX || target_lang == ICode_generator::TL_LLVM_AMDGPU_IR) &&
     options.get_bool_option(MDL_JIT_OPTION_LINK_LIBDEVICE))
 , m_link_libmdlrt(false)
 , m_link_libbsdf_df_handle_slot_mode(parse_df_handle_slot_mode(
@@ -1584,13 +1653,13 @@ LLVM_code_generator::LLVM_code_generator(
     // base::transform_coordinate()
     m_force_inlining_targets[
         "_ZN4base20transform_coordinateEu8float4x4N4base23texture_coordinate_infoE"]
-        = TARGET_BIT(PTX);
+        = TARGET_BIT(PTX) | TARGET_BIT(LLVM_AMDGPU_IR);
 
     // base::lookup_volume_coefficients()
     m_force_inlining_targets[
         "_ZN4base26lookup_volume_coefficientsEU7uniformu10texture_3dU7uniformu5colorU7uniform"
         "u5colorU7uniformu5colorU7uniformu5colorU7uniformu8float4x4U7uniformfU7uniformb"]
-        = TARGET_BIT(PTX);
+        = TARGET_BIT(PTX) | TARGET_BIT(LLVM_AMDGPU_IR);
 
     #undef TARGET_BIT
 }
@@ -1996,6 +2065,23 @@ bool LLVM_code_generator::optimize(llvm::Module *module)
         for (auto &func : module->functions()) {
             fpm.run(func);
         }
+    }
+
+    if (m_target_lang == ICode_generator::TL_LLVM_AMDGPU_IR) {
+        if (m_link_libdevice) {
+            // Remove unused libDevice functions for AMDGCN as well
+            llvm::legacy::PassManager mpm;
+            mpm.add(llvm::createDeleteUnusedLibDevicePass());
+            mpm.run(*module);
+        }
+
+        // Add AMDGCN-specific passes if needed
+        llvm::legacy::FunctionPassManager fpm(module);
+        // Add AMDGCN-specific function passes here
+        for (auto &func : module->functions()) {
+            fpm.run(func);
+        }
+
     }
 
     llvm::PassManagerBuilder builder;
@@ -3042,6 +3128,14 @@ void LLVM_code_generator::set_llvm_function_attributes(
     if (is_finite_math_enabled()) {
         func->addFnAttr("no-infs-fp-math", "true");
         func->addFnAttr("no-nans-fp-math", "true");
+    }
+    if (m_target_lang == Target_language::TL_LLVM_AMDGPU_IR)
+    {
+        MDL_ASSERT(m_amdgcn_target_machine != NULL);
+        func->addFnAttr("no-trapping-math", "true");
+        func->addFnAttr("stack-protector-buffer-size", "8");
+        func->addFnAttr("target-cpu", m_amdgcn_target_machine->getTargetCPU());
+        func->addFnAttr("target-features", m_amdgcn_target_machine->getTargetFeatureString());
     }
 }
 
@@ -9876,6 +9970,9 @@ void LLVM_code_generator::create_module(char const *mod_name, char const *mod_fn
     // creates a new llvm module
     m_module = new llvm::Module(mod_name, m_llvm_context);
     m_module->setDataLayout(*get_target_layout_data());
+    if (m_target_lang == Target_language::TL_LLVM_AMDGPU_IR) {
+        m_module->setTargetTriple(m_amdgcn_target_machine->getTargetTriple().getTriple());
+    }
 
     if (m_enable_full_debug || m_enable_type_debug) {
         m_di_builder = new llvm::DIBuilder(*m_module);
@@ -9997,6 +10094,9 @@ llvm::Module *LLVM_code_generator::finalize_module()
     replace_bsdf_data_calls();
 
     llvm::Module *llvm_module = m_module;
+    
+    PrintLLVMModule(llvm_module, m_target_lang, "About to finalize module");
+    
     m_module = NULL;
     if (m_di_builder != NULL) {
         // add all references debug descriptors
@@ -10007,6 +10107,8 @@ llvm::Module *LLVM_code_generator::finalize_module()
     }
 
     m_func_pass_manager->doFinalization();
+
+    PrintLLVMModule(llvm_module, m_target_lang, "After function pass manager");
 
     // avoid optimizing unused functions
     for (llvm::Function *func : m_libbsdf_template_funcs) {
@@ -10058,6 +10160,7 @@ llvm::Module *LLVM_code_generator::finalize_module()
                 set_llvm_function_attributes(&func, /*mark_noinline=*/false);
             }
 
+
             if (llvm::Linker::linkModules(*llvm_module, std::move(libdevice))) {
                 // true means linking has failed
                 error(LINKING_LIBDEVICE_FAILED, "unknown linking error");
@@ -10098,7 +10201,7 @@ llvm::Module *LLVM_code_generator::finalize_module()
             }
         }
 
-#if 0
+#if 1
         static int fileid = 0;
         {
             std::string filename("prog_" + std::to_string(fileid) + "-preopt.ll");
@@ -10107,10 +10210,12 @@ llvm::Module *LLVM_code_generator::finalize_module()
             llvm_module->print(file, NULL);
         }
 #endif
-
+        PrintLLVMModule(llvm_module, m_target_lang, "After linking with other runtimes");
         optimize(llvm_module);
+        PrintLLVMModule(llvm_module, m_target_lang, "After optimization");
 
-#if 0
+
+#if 1
         {
             std::string filename("prog_" + std::to_string(fileid) + "-postopt.ll");
             std::error_code ec;
@@ -10139,6 +10244,43 @@ MDL_JIT_module_key LLVM_code_generator::jit_compile(llvm::Module *module)
     MDL_JIT_module_key module_key = m_jitted_code->add_llvm_module(module);
     return module_key;
 }
+
+/// Create the target machine for AMDGCN code generation
+std::unique_ptr<llvm::TargetMachine> LLVM_code_generator::create_amdgcn_target_machine(const string& gfx_architecture)
+{
+    // create the AMDGCN target machine
+    std::string triple = llvm::Triple("amdgcn", "amd", "amdhsa").str();
+    std::string_view features = "+16-bit-insts,+ci-insts,+dl-insts,+dot1-insts,+dot10-insts,+dot2-insts,+dot5-insts,+dot6-insts,+dot7-insts,+dpp,+gfx10-3-insts,+gfx10-insts,+gfx8-insts,+gfx9-insts,+s-memrealtime,+s-memtime-inst,+wavefrontsize32";
+    
+    std::string error;
+    llvm::Target const *target = llvm::TargetRegistry::lookupTarget("amdgcn", error);
+    MDL_ASSERT(target != NULL);  // backend not found, should not happen
+
+     llvm::CodeGenOpt::Level OLvl = llvm::CodeGenOpt::None;
+    if (m_opt_level == 1) {
+        OLvl = llvm::CodeGenOpt::Default;
+    } else if (m_opt_level >= 2) {
+        OLvl = llvm::CodeGenOpt::Aggressive;
+    }
+
+    llvm::TargetOptions options;
+    if (m_fast_math) {
+        options.UnsafeFPMath = true;
+    }
+    if (m_finite_math) {
+        options.NoInfsFPMath = options.NoNaNsFPMath = true;
+    }
+
+    std::unique_ptr<llvm::TargetMachine> target_machine(target->createTargetMachine(
+        triple, gfx_architecture.c_str(), features, options,
+        llvm::None, llvm::None, OLvl));
+    if (!target_machine) {
+        MDL_ASSERT(!"Failed to create AMDGPU target machine");
+        return nullptr;
+    }
+    return target_machine;
+}
+
 
 /// Create the target machine for PTX code generation.
 std::unique_ptr<llvm::TargetMachine> LLVM_code_generator::create_ptx_target_machine()
@@ -10379,6 +10521,20 @@ void LLVM_code_generator::llvm_bc_compile(llvm::Module *module, string &code)
 {
     raw_string_ostream Out(code);
     llvm::WriteBitcodeToFile(*module, Out);
+
+#if 1
+    // write the code to a file 
+    std::error_code ec;
+    llvm::raw_fd_ostream file("AMDGCN.bc", ec, llvm::sys::fs::F_None);
+    if (ec) {
+        error(-1, ec.message().c_str());
+        return;
+    }
+    llvm::WriteBitcodeToFile(*module, file);
+
+#endif 
+
+
 }
 
 // Fill the function information in the given code object with the info about the generated

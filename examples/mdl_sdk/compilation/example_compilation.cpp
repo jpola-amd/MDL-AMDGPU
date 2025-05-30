@@ -245,6 +245,45 @@ void generate_llvm_ir(
     std::cout << code_llvm_ir->get_code() << std::endl;
 }
 
+
+void gnerate_llvm_amdgcn_ir(
+    mi::neuraylib::ITransaction* transaction,
+    mi::neuraylib::IMdl_backend_api* mdl_backend_api,
+    mi::neuraylib::IMdl_execution_context* context,
+    const char* compiled_material_name,
+    const char* path,
+    const char* fname) 
+{
+    mi::base::Handle<const mi::neuraylib::ICompiled_material> compiled_material(
+        transaction->access<mi::neuraylib::ICompiled_material>(compiled_material_name));
+    check_success(compiled_material.is_valid_interface());
+
+    mi::base::Handle<mi::neuraylib::IMdl_backend> be_llvm_amdgcn_ir(
+        mdl_backend_api->get_backend(mi::neuraylib::IMdl_backend_api::MB_LLVM_AMDGCN_IR));
+    check_success(be_llvm_amdgcn_ir.is_valid_interface());
+    // see backends_backends.cpp:L3533
+    check_success(be_llvm_amdgcn_ir->set_option("num_texture_spaces", "16") == 0);
+    check_success(be_llvm_amdgcn_ir->set_option("gfx_arch", "gfx1030") == 0);
+    check_success(be_llvm_amdgcn_ir->set_option("output_format", "LLVM-BC") == 0);
+    check_success(be_llvm_amdgcn_ir->set_option("link_libdevice", "off") == 0);
+   
+
+    mi::base::Handle<const mi::neuraylib::ITarget_code> code_amdgpu(
+        be_llvm_amdgcn_ir->translate_material_expression(
+            transaction, compiled_material.get(), path, fname, context));
+    check_success(print_messages(context));
+    check_success(code_amdgpu);
+
+    std::cout << "Dumping AMDGPU code for \"" << path << "\" of \"" << compiled_material_name
+        << "\":" << std::endl << std::endl;
+    std::cout << code_amdgpu->get_code() << std::endl;
+    // save to file
+
+
+
+
+}
+
 // Generates CUDA PTX target code for a subexpression of a given compiled material.
 void generate_cuda_ptx(
     mi::neuraylib::ITransaction* transaction,
@@ -264,6 +303,7 @@ void generate_cuda_ptx(
 
     check_success(be_cuda_ptx->set_option( "num_texture_spaces", "16") == 0);
     check_success(be_cuda_ptx->set_option( "sm_version", "50") == 0);
+    check_success(be_cuda_ptx->set_option( "output_format", "LLVM-IR") == 0);
 
     mi::base::Handle<const mi::neuraylib::ITarget_code> code_cuda_ptx(
         be_cuda_ptx->translate_material_expression(
@@ -455,15 +495,20 @@ int MAIN_UTF8(int argc, char* argv[])
                 transaction.get(), mdl_backend_api.get(), context.get(),
                 instance_compilation_name.c_str(),
                 options.expr_path.c_str(), "tint");
-            generate_llvm_ir(
+            /*     generate_llvm_ir(
                 transaction.get(), mdl_backend_api.get(), context.get(),
                 class_compilation_name.c_str(),
+                options.expr_path.c_str(), "tint");*/
+            std::cout << "\n\t------- AMDGCN ------ \n";
+            gnerate_llvm_amdgcn_ir(transaction.get(), mdl_backend_api.get(), context.get(),
+                instance_compilation_name.c_str(),
                 options.expr_path.c_str(), "tint");
-            generate_cuda_ptx(
+
+           generate_cuda_ptx(
                 transaction.get(), mdl_backend_api.get(), context.get(),
                 instance_compilation_name.c_str(),
                 options.expr_path.c_str(), "tint");
-            generate_cuda_ptx(
+           /* generate_cuda_ptx(
                 transaction.get(), mdl_backend_api.get(), context.get(),
                 class_compilation_name.c_str(),
                 options.expr_path.c_str(), "tint");
@@ -482,7 +527,7 @@ int MAIN_UTF8(int argc, char* argv[])
             generate_hlsl(
                 transaction.get(), mdl_backend_api.get(), context.get(),
                 class_compilation_name.c_str(),
-                options.expr_path.c_str(), "tint");
+                options.expr_path.c_str(), "tint");*/
         }
 
         transaction->commit();

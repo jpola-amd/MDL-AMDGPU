@@ -1606,6 +1606,7 @@ case en: return NULL;
     switch (m_target_lang) {
     case ICode_generator::TL_LLVM_IR:
     case ICode_generator::TL_NATIVE:
+    case ICode_generator::TL_LLVM_AMDGPU_IR:
         // use default LLVM intrinsics
         switch (code) {
         LLVM_INTRINSIC(RT_ABS,      fabs);
@@ -2513,6 +2514,7 @@ llvm::Function *MDL_runtime_creator::create_runtime_func(
     // if we are in NATIVE mode
     #define MARK_NATIVE(func) do {                                    \
             if (m_target_lang == ICode_generator::TL_NATIVE ||        \
+                m_target_lang == ICode_generator::TL_LLVM_AMDGPU_IR ||\
                 m_target_lang == ICode_generator::TL_LLVM_IR) {       \
                 func->setCallingConv(llvm::CallingConv::C);           \
                 func->setLinkage(llvm::GlobalValue::ExternalLinkage); \

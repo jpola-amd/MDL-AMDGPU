@@ -2062,6 +2062,8 @@ static mi::mdl::ICode_generator::Target_language map_target_language(
         return mi::mdl::ICode_generator::TL_NATIVE;
     case mi::neuraylib::IMdl_backend_api::MB_HLSL:
         return mi::mdl::ICode_generator::TL_HLSL;
+    case mi::neuraylib::IMdl_backend_api::MB_LLVM_AMDGCN_IR:
+        return mi::mdl::ICode_generator::TL_LLVM_AMDGPU_IR;
     default:
         // should not happen
         return mi::mdl::ICode_generator::TL_NATIVE;
@@ -3073,6 +3075,7 @@ Mdl_llvm_backend::Mdl_llvm_backend(
     bool                                           string_ids)
   : m_kind(kind),
     m_sm_version(20),
+    m_gfx_arch(0),
     m_num_texture_spaces(32),  // by default the number of texture spaces is 32
     m_num_texture_results(0),
     m_compiler(compiler, mi::base::DUP_INTERFACE),
@@ -3183,6 +3186,18 @@ static struct Sm_versions { char const *name; unsigned code; } const known_sms[]
     { "75", 75 },
     { "80", 80 },
     { "86", 86 },
+};
+
+static struct Gfx_architectures { char const* name; unsigned code; } const known_gfx_arch[] = {
+    { "gfx1030", 1030 },
+    { "gfx1031", 1031 },
+    { "gfx1032", 1032 },
+    { "gfx1033", 1033 },
+    { "gfx1100", 1100 },
+    { "gfx1150", 1150 },
+    { "gfx1151", 1151 },
+    { "gfx1200", 1200 },
+    { "gfx1201", 1201 },
 };
 
 static mi::Sint32 set_state_mode_option(
@@ -3518,7 +3533,61 @@ mi::Sint32 Mdl_llvm_backend::set_option(
             return 0;
         }
         break;
-
+    case mi::neuraylib::IMdl_backend_api::MB_LLVM_AMDGCN_IR:
+        if (strcmp(name, "gfx_arch") == 0) {
+            for (size_t i = 0, n = sizeof(known_gfx_arch) / sizeof(known_gfx_arch[0]); i < n; ++i) {
+                if (strcmp(value, known_gfx_arch[i].name) == 0) {
+                    m_gfx_arch = known_gfx_arch[i].code;
+                    jit_options.set_option(MDL_JIT_OPTION_AMDGCN_GFX_ARCH, value);
+                    return 0;
+                }
+            }
+            return  -2;
+        }
+        if (strcmp(name, "write_bitcode") == 0) {
+            if (strcmp(value, "off") == 0) {
+                value = "false";
+            }
+            else if (strcmp(value, "on") == 0) {
+                value = "true";
+            }
+            else {
+                return -2;
+            }
+            jit_options.set_option(MDL_JIT_OPTION_WRITE_BITCODE, value);
+            return 0;
+        }
+        if (strcmp(name, "link_libdevice") == 0) {
+            if (strcmp(value, "off") == 0) {
+                value = "false";
+            }
+            else if (strcmp(value, "on") == 0) {
+                value = "true";
+            }
+            else {
+                return -2;
+            }
+            jit_options.set_option(MDL_JIT_OPTION_LINK_LIBDEVICE, value);
+            return 0;
+        }
+        if (strcmp(name, "output_format") == 0) {
+            bool enable_bc = false;
+            if (strcmp(value, "LLVM-IR") == 0) {
+                m_output_target_lang = true; //JPA: ? hmm.. what should it be for amdgcn?
+                enable_bc = false;
+            }
+            else if (strcmp(value, "LLVM-BC") == 0) {
+                m_output_target_lang = true; //? hmm
+                enable_bc = true;
+            }
+            else {
+                return -2;
+            }
+            jit_options.set_option(
+                MDL_JIT_OPTION_WRITE_BITCODE, enable_bc ? "true" : "false");
+            return 0;
+        }
+        break;
     case mi::neuraylib::IMdl_backend_api::MB_GLSL:
         if (strcmp(name, "glsl_version") == 0) {
             char const *version = "3.30";
@@ -3827,11 +3896,25 @@ mi::neuraylib::ITarget_code const *Mdl_llvm_backend::translate_environment(
                 cg_ctx.get(),
                 m_num_texture_spaces,
                 m_num_texture_results,
-                m_enable_simd));
+                m_enable_simd,
+                0 /*gfx_arch*/));
+        break;
+    case mi::neuraylib::IMdl_backend_api::MB_LLVM_AMDGCN_IR:
+        code = mi::base::make_handle(
+            m_jit->compile_into_llvm_ir(
+                lambda.get(),
+                &module_cache,
+                &resolver,
+                cg_ctx.get(),
+                m_num_texture_spaces,
+                m_num_texture_results,
+                m_enable_simd,
+                m_gfx_arch));
         break;
     case mi::neuraylib::IMdl_backend_api::MB_CUDA_PTX:
     case mi::neuraylib::IMdl_backend_api::MB_GLSL:
     case mi::neuraylib::IMdl_backend_api::MB_HLSL:
+    //case mi::neuraylib::IMdl_backend_api::MB_LLVM_AMDGCN_IR:
         code = mi::base::make_handle(
             m_jit->compile_into_source(
                 m_code_cache.get(),
@@ -3842,6 +3925,7 @@ mi::neuraylib::ITarget_code const *Mdl_llvm_backend::translate_environment(
                 m_num_texture_spaces,
                 m_num_texture_results,
                 m_sm_version,
+                m_gfx_arch,
                 map_target_language(m_kind),
                 !m_output_target_lang));
         break;
@@ -3971,8 +4055,10 @@ mi::neuraylib::ITarget_code const *Mdl_llvm_backend::translate_material_expressi
                 cg_ctx.get(),
                 m_num_texture_spaces,
                 m_num_texture_results,
-                m_enable_simd));
+                m_enable_simd,
+                m_gfx_arch));
         break;
+    case mi::neuraylib::IMdl_backend_api::MB_LLVM_AMDGCN_IR:
     case mi::neuraylib::IMdl_backend_api::MB_CUDA_PTX:
     case mi::neuraylib::IMdl_backend_api::MB_GLSL:
     case mi::neuraylib::IMdl_backend_api::MB_HLSL:
@@ -3986,6 +4072,7 @@ mi::neuraylib::ITarget_code const *Mdl_llvm_backend::translate_material_expressi
                 m_num_texture_spaces,
                 m_num_texture_results,
                 m_sm_version,
+                m_gfx_arch,
                 map_target_language(m_kind),
                 !m_output_target_lang));
         break;

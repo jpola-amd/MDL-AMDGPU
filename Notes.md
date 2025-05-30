@@ -37,3 +37,18 @@
   - This set currently compiles.
 - Note: There is also `_LLVM_EXCLUDE` which prevents some libraries from being compiled (see `src/mdl/jit/llvm/CMakeLists.txt`).
 - Start with `example_compilation` to generate outputs for different backends.
+
+
+## 31.05.2025
+If we use an example_compile code. We can get the AMDGCN.bc that we can use in hip program I think.
+```shell
+PS D:\Sandbox\MDL\build\examples\mdl_sdk\compilation\Debug> llvm-dis .\AMDGCN.bc
+PS D:\Sandbox\MDL\build\examples\mdl_sdk\compilation\Debug> llc -march=amdgcn -mcpu=gfx1030 .\AMDGCN.ll -o AMDGCN.s
+```
+
+*Next*: 
+* verify if we can use this in any of the hip applications.
+* Remove unnecessary code from the direct llvm_ir genration. We must use the the compile source path: 
+```c++
+m_jit->compile_into_source(...)
+```

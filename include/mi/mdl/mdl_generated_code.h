@@ -109,6 +109,7 @@ public:
         CK_GLSL,        ///< Generated GLSL code.
         CK_HLSL,        ///< Generated HLSL code.
         CK_LLVM_IR,     ///< Generated LLVM-IR code.
+        CK_AMDGCN_IR,   ///< Genreated AMDGCN LLVM IR
         CK_EXECUTABLE   ///< Generated (native CPU) executable code.
     };
 

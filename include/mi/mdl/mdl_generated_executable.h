@@ -199,6 +199,8 @@ public:
         PL_PTX,
         PL_HLSL,
         PL_GLSL,             // \if MDL_SOURCE_RELEASE Reserved\else GLSL\endif.
+        PL_AMDGCN_IR,
+        PL_AMDGCN_HIP,
         PL_NUM_LANGUAGES
     };
 

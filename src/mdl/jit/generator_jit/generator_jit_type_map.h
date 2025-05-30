@@ -111,6 +111,9 @@ public:
         /// The mode for GLSL compilation.
         TM_GLSL       = TM_SMALL_VECTORS | TM_NO_REFERENCE | TM_NO_POINTER_SUPPORT |
                         TM_BOOL1_SUPPORTED,
+
+        /// The mode for AMDGCN IR compilation.
+        TM_AMDGCN_IR =  TM_SMALL_VECTORS,
     };
 
     /// array_desc<T> access indexes.

@@ -89,6 +89,7 @@ public:
         MB_GLSL,              ///< Generate GLSL code.
         MB_NATIVE,            ///< Generate native code.
         MB_HLSL,              ///< Generate HLSL code.
+        MB_LLVM_AMDGCN_IR,     ///< Generate AMDGCN IR
         MB_FORCE_32_BIT = 0xffffffffU //   Undocumented, for alignment only
     };
 

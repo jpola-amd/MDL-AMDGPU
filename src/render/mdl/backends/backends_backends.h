@@ -158,6 +158,8 @@ public:
     /// If compiling for PTX, get the SM version.
     unsigned get_sm_version() const { return m_sm_version; }
 
+    unsigned get_gfx_architecture() const { return m_gfx_arch;  }
+
     /// Get the number of supported texture spaces.
     unsigned get_num_texture_spaces() const { return m_num_texture_spaces; }
 
@@ -189,6 +191,9 @@ private:
 
     /// If compiling for PTX, the SM version.
     unsigned m_sm_version;
+
+    /// if compiling for AMDGPU the gfxnumber
+    unsigned m_gfx_arch;
 
     /// Number of supported texture spaces.
     unsigned m_num_texture_spaces;

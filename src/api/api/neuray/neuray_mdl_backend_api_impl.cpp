@@ -78,6 +78,23 @@ mi::neuraylib::IMdl_backend* Mdl_backend_api_impl::get_backend(Mdl_backend_kind 
             code_cache.get(),
             /*string_ids=*/true);
     }
+    case MB_LLVM_AMDGCN_IR:
+    {
+        mi::base::Handle<mi::mdl::ICode_generator> generator(
+            compiler->load_code_generator("jit"));
+        if (!generator)
+            return nullptr;
+        mi::base::Handle<mi::mdl::ICode_generator_jit> jit(
+            generator->get_interface<mi::mdl::ICode_generator_jit>());
+        mi::base::Handle<mi::mdl::ICode_cache> code_cache(m_mdlc_module->get_code_cache());
+        return new Mdl_llvm_backend(
+            kind,
+            compiler.get(),
+            jit.get(),
+            code_cache.get(),
+            /*string_ids=*/true);
+
+    }
     case MB_FORCE_32_BIT:
         break;
     }

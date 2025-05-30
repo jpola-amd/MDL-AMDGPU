@@ -1879,6 +1879,9 @@ public:
         mi::mdl::IExpression_binary::Operator op,
         llvm::Type                            *arg_type);
 
+    /// Create the target machine for AMDGCN code generation
+    std::unique_ptr<llvm::TargetMachine> create_amdgcn_target_machine(const string& gfx_architecture);
+
     /// Create the target machine for PTX code generation.
     std::unique_ptr<llvm::TargetMachine> create_ptx_target_machine();
 
@@ -3523,6 +3526,7 @@ public:
         case ICode_generator::TL_NATIVE:
         case ICode_generator::TL_PTX:
         case ICode_generator::TL_LLVM_IR:
+        case ICode_generator::TL_LLVM_AMDGPU_IR:
             return true;
         case ICode_generator::TL_HLSL:
         case ICode_generator::TL_GLSL:
@@ -3542,6 +3546,7 @@ public:
         case ICode_generator::TL_LLVM_IR:
         case ICode_generator::TL_HLSL:
         case ICode_generator::TL_GLSL:
+        case ICode_generator::TL_LLVM_AMDGPU_IR:
             return false;
         }
         MDL_ASSERT(!"unsupported target language");
@@ -3554,6 +3559,7 @@ public:
         case ICode_generator::TL_NATIVE:
         case ICode_generator::TL_PTX:
         case ICode_generator::TL_LLVM_IR:
+        case ICode_generator::TL_LLVM_AMDGPU_IR:
             return true;
         case ICode_generator::TL_HLSL:
         case ICode_generator::TL_GLSL:
@@ -3569,6 +3575,7 @@ public:
         case ICode_generator::TL_NATIVE:
         case ICode_generator::TL_PTX:
         case ICode_generator::TL_LLVM_IR:
+        case ICode_generator::TL_LLVM_AMDGPU_IR:
             return true;
         case ICode_generator::TL_HLSL:
         case ICode_generator::TL_GLSL:
@@ -3584,6 +3591,7 @@ public:
         case ICode_generator::TL_NATIVE:
         case ICode_generator::TL_PTX:
         case ICode_generator::TL_LLVM_IR:
+        case ICode_generator::TL_LLVM_AMDGPU_IR:
             return true;
         case ICode_generator::TL_HLSL:
         case ICode_generator::TL_GLSL:
@@ -3599,6 +3607,7 @@ public:
         case ICode_generator::TL_NATIVE:
         case ICode_generator::TL_PTX:
         case ICode_generator::TL_LLVM_IR:
+        case ICode_generator::TL_LLVM_AMDGPU_IR:
             return true;
         case ICode_generator::TL_HLSL:
             return false;
@@ -3622,6 +3631,7 @@ public:
         case ICode_generator::TL_NATIVE:
         case ICode_generator::TL_PTX:
         case ICode_generator::TL_LLVM_IR:
+        case ICode_generator::TL_LLVM_AMDGPU_IR:
             return false;
         case ICode_generator::TL_HLSL:
         case ICode_generator::TL_GLSL:
@@ -3637,6 +3647,7 @@ public:
         case ICode_generator::TL_NATIVE:
         case ICode_generator::TL_PTX:
         case ICode_generator::TL_LLVM_IR:
+        case ICode_generator::TL_LLVM_AMDGPU_IR:
             return false;
         case ICode_generator::TL_HLSL:
         case ICode_generator::TL_GLSL:
@@ -4089,6 +4100,11 @@ private:
 
     /// The target machine used with this code generator in PTX mode.
     std::unique_ptr<llvm::TargetMachine> m_ptx_target_machine;
+        
+    string m_gfx_architecture;
+
+    /// The target machine used with this code generator in AMDGCN mode.
+    std::unique_ptr<llvm::TargetMachine> m_amdgcn_target_machine;
 
     /// The data layout to be used with this code generator.
     llvm::DataLayout m_data_layout;

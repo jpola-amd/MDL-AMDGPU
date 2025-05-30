@@ -582,7 +582,8 @@ public:
         ICode_generator_thread_context *ctx,
         unsigned                       num_texture_spaces,
         unsigned                       num_texture_results,
-        bool                           enable_simd) MDL_FINAL;
+        bool                           enable_simd,
+        unsigned                       gfx_arch = 0) MDL_FINAL;
 
     /// Compile a whole MDL module into LLVM-IR.
     ///
@@ -670,6 +671,7 @@ public:
         unsigned                       num_texture_spaces,
         unsigned                       num_texture_results,
         unsigned                       sm_version,
+        unsigned                       gfx_arch,
         Target_language                target,
         bool                           llvm_ir_output) MDL_FINAL;
 
